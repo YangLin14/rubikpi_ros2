@@ -28,6 +28,9 @@ setup(
         'console_scripts': [
             'motor_control = robot_control.motor_control:main',
             'keyboard_control = robot_control.keyboard_control:main',
+            'ssh_keyboard_control = robot_control.ssh_keyboard_control:main',
+            'calibrate = robot_control.calibrate:main',
+            'waypoint_navigator = robot_control.waypoint_navigator:main',
             'velocity_control = robot_control.velocity_control:main',
         ],
     },

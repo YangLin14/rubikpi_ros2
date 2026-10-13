@@ -185,8 +185,9 @@ class MotorControllerNode(Node):
         while self.running and rclpy.ok():
             if self.robot:
                 try:
-                    # read available data
-                    data = self.robot.read(1024)
+                    # read whatever is available (at least 1 byte) so IMU data is
+                    # handled as soon as it arrives instead of every 0.1s timeout
+                    data = self.robot.read(self.robot.in_waiting or 1)
                     if data:
                         buffer += data.decode('utf-8', errors='ignore')
                         
