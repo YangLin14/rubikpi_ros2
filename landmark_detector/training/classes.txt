@@ -1,0 +1,6 @@
+water_bottle
+toilet_paper
+mug
+cereal_box
+black_fan
+dog_plushie

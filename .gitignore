@@ -12,3 +12,11 @@ log/
 .DS_Store
 .vscode/
 .idea/
+
+# HW2 data and generated files
+dataset/
+calibration/images/
+landmark_detector/training/runs/
+*.pt
+landmark_detector/models/yolo11n_*.onnx
+landmark_detector/models/landmarks_round1_416.*

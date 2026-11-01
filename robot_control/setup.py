@@ -31,6 +31,7 @@ setup(
             'ssh_keyboard_control = robot_control.ssh_keyboard_control:main',
             'calibrate = robot_control.calibrate:main',
             'waypoint_navigator = robot_control.waypoint_navigator:main',
+            'ekf_navigator = robot_control.ekf_navigator:main',
             'velocity_control = robot_control.velocity_control:main',
         ],
     },

@@ -1,0 +1,18 @@
+# Landmark sizes in meters, tape-measured roughly. dog_plushie is measured sitting
+# in its blue cup, and must stay in the cup.
+#
+# range_height, when present, replaces height in range estimation. It is fitted to
+# tape-measured distances, since the detector box is shorter than the real object:
+# water_bottle and cereal_box at 1 and 2 m, dog_plushie and toilet_paper at 1 m only.
+#
+# position is the landmark center on the floor, in meters in the world frame with
+# the origin at the middle of the car at the start, and
+# radius is the distance from its front face to its center. Only landmarks with a
+# position are used for localization.
+landmarks:
+  water_bottle: {height: 0.30, width: 0.095, range_height: 0.280, position: [1.2, 2.0], radius: 0.048}
+  toilet_paper: {height: 0.114, width: 0.10, range_height: 0.109, position: [1.35, 0.0], radius: 0.05}
+  mug: {height: 0.11, width: 0.12}  # width includes the handle
+  cereal_box: {height: 0.333, width: 0.235, range_height: 0.303, position: [-0.15, -0.30], radius: 0.035}
+  black_fan: {height: 0.30, width: 0.135}
+  dog_plushie: {height: 0.17, width: 0.12, range_height: 0.147, position: [1.2, 1.0], radius: 0.05}

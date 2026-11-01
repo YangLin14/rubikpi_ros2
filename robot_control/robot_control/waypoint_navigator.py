@@ -37,13 +37,14 @@ MAX_CORRECTION = 0.1     # cap on the heading correction while driving
 
 TURN_CMD = 0.5           # in-place turn command; 0.45 often fails to start from rest
 TURN_LEAD = math.radians(15)       # stop the continuous turn this early (latency)
-TURN_TOLERANCE = math.radians(5)   # good enough heading error
+TURN_TOLERANCE = math.radians(3)   # good enough heading error
 PULSE_TIME = 0.12         # seconds per small correction pulse
 MAX_TURN_STEPS = 8       # continuous turn + correction pulses before giving up
 MAX_TURN_TIME = 5.0      # seconds; safety limit for one continuous turn
 
 GYRO_SCALE = 1.0         # multiply gyro rate by this if turns are consistently off
-BIAS_TIME = 2.0          # seconds standing still to measure gyro bias
+BIAS_TIME = 4.0          # seconds standing still to measure gyro bias
+IMU_WAIT = 10.0          # seconds to wait for the first IMU sample
 SETTLE_TIME = 0.3        # seconds to stop between motions
 WAYPOINT_PAUSE = 1.0     # seconds to stop at each waypoint
 
@@ -84,7 +85,10 @@ class WaypointNavigator(Node):
             self.bias_samples.append(gz)
         elif self.sample_dt is not None:
             rate = math.radians(gz - self.gyro_bias) * GYRO_SCALE
-            self.heading = wrap_angle(self.heading + rate * self.sample_dt)
+            self.integrate(rate, self.sample_dt)
+
+    def integrate(self, rate, dt):
+        self.heading = wrap_angle(self.heading + rate * dt)
 
     def send(self, L, R):
         msg = Float32MultiArray()
@@ -99,6 +103,10 @@ class WaypointNavigator(Node):
             rclpy.spin_once(self, timeout_sec=0.05)
 
     def measure_gyro_bias(self):
+        # A new node can take seconds to connect to the topic
+        end = time.time() + IMU_WAIT
+        while rclpy.ok() and self.last_stamp is None and time.time() < end:
+            self.drive_for(0.1)
         print(f'Measuring gyro bias, keep the robot still for {BIAS_TIME:.0f}s ...')
         self.bias_samples = []
         self.drive_for(BIAS_TIME)

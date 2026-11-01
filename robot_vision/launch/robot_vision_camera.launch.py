@@ -21,6 +21,8 @@ def generate_launch_description():
     camera_parameter_path = LaunchConfiguration('camera_parameter_path')
     jpeg_quality = LaunchConfiguration('jpeg_quality')
     max_threads = LaunchConfiguration('max_threads')
+    saturation = LaunchConfiguration('saturation')
+    hue = LaunchConfiguration('hue')
 
     declare_args = [
         DeclareLaunchArgument('frame_rate', default_value='10'),
@@ -41,6 +43,9 @@ def generate_launch_description():
         ),
         DeclareLaunchArgument('jpeg_quality', default_value='90'),
         DeclareLaunchArgument('max_threads', default_value='1'),
+        # The node defaults (saturation 0.2, hue 0.1) wash out landmark colors
+        DeclareLaunchArgument('saturation', default_value='0.6'),
+        DeclareLaunchArgument('hue', default_value='0.0'),
     ]
 
     # ----- Robot Vision Camera node -----
@@ -64,6 +69,8 @@ def generate_launch_description():
             'camera_parameter_path': camera_parameter_path,
             'jpeg_quality': jpeg_quality,
             'max_threads': max_threads,
+            'saturation': saturation,
+            'hue': hue,
         }],
         # Example remaps (optional): publish compressed under <topic_name>/compressed by your code already
         # remappings=[('camera/image_raw', LaunchConfiguration('topic_name'))],
