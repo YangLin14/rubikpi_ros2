@@ -177,7 +177,7 @@ class EkfNavigator(WaypointNavigator):
             sigma = SIGMA_RANGE * rng
             if moving:
                 sigma = max(sigma, SIGMA_RANGE_MOVING)
-            x, y, theta = self.ekf.state
+            x, y, theta = self.ekf.state[:3]
             dx, dy = lm['position'][0] - x, lm['position'][1] - y
             expected = (math.hypot(dx, dy), wrap_angle(math.atan2(dy, dx) - theta))
             ok = self.ekf.update(lm['position'], rng, bearing, sigma, SIGMA_BEARING)
@@ -209,7 +209,7 @@ class EkfNavigator(WaypointNavigator):
             raise Abort(f'turn failed, {math.degrees(err):+.1f} deg off target')
 
     def log_pose(self):
-        x, y, theta = self.ekf.state
+        x, y, theta = self.ekf.state[:3]
         P = self.ekf.P
         elapsed = time.time() - self.started
         self.pose_log.write(f'{elapsed:.2f},{x:.4f},{y:.4f},{theta:.4f},'
@@ -261,7 +261,7 @@ class EkfNavigator(WaypointNavigator):
         self.drive_for(LOOK_TIME)
 
     def report(self, label):
-        x, y, theta = self.ekf.state
+        x, y, theta = self.ekf.state[:3]
         P = self.ekf.P
         print(f'  {label}: ({x:+.3f}, {y:+.3f}, {math.degrees(theta):+.1f} deg), '
               f'sigma ({math.sqrt(P[0, 0]):.3f}, {math.sqrt(P[1, 1]):.3f} m, '
@@ -286,7 +286,7 @@ class EkfNavigator(WaypointNavigator):
             for attempt in range(MAX_ATTEMPTS):
                 if self.distance_to(gx, gy) < POSITION_TOLERANCE:
                     break
-                x, y, theta = self.ekf.state
+                x, y, theta = self.ekf.state[:3]
                 direction = math.atan2(gy - y, gx - x)
                 off = abs(wrap_angle(direction - theta))
                 if attempt > 0 and off > RETRY_WITHIN:

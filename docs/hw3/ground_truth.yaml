@@ -1,0 +1,20 @@
+# HW3 ground truth, tape-measured. World frame: origin at one corner of the
+# 2 x 3 m arena, x along the 2 m side, y along the 3 m side, meters.
+# Landmarks tape-measured 2026-11-13. Start poses are the planned ones; replace with
+# the measured start of each run.
+arena: [2.0, 3.0]      # m, x size and y size
+landmarks:             # center of each landmark on the floor (tags: center of the tag)
+  water_bottle: [0.44, 3.05]
+  toilet_paper: [2.10, 2.15]
+  cereal_box:   [1.30, -0.08]
+  dog_plushie:  [-0.10, 1.10]
+  tag_0:        [0.44, -0.08]
+  tag_1:        [-0.10, 2.15]
+  tag_2:        [1.30, 3.05]
+  tag_3:        [2.10, 1.10]
+# Robot start pose for each run: car CENTER (12.5 cm behind the lens), heading in
+# degrees, 0 = +x, 90 = +y
+starts:
+  square_mid: [1.0, 1.375, 90.0]   # run 1113_231411, lens at (1.0, 1.5)
+  square:  [1.1, 1.075, 90.0]       # run 1114_020627, lens at (1.1, 1.2)
+  octagon: [1.2, 0.975, 90.0]       # run 1114_020949, lens at (1.2, 1.1)

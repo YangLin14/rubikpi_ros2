@@ -32,6 +32,7 @@ setup(
             'calibrate = robot_control.calibrate:main',
             'waypoint_navigator = robot_control.waypoint_navigator:main',
             'ekf_navigator = robot_control.ekf_navigator:main',
+            'slam_navigator = robot_control.slam_navigator:main',
             'velocity_control = robot_control.velocity_control:main',
         ],
     },

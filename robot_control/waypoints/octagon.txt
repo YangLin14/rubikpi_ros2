@@ -1,0 +1,12 @@
+# HW3 octagon, side m = 0.4 m (1.3 ft), counterclockwise, in the robot's own frame.
+# First line is the start = map origin. 2 x 3 m arena: start the car center at
+# world (1.483, 1.3) facing +y (camera lens at (1.483, 1.425)), so the octagon is centered.
+0.0000,0.0000,0.0
+0.4000,0.0000,0.0
+0.6828,0.2828,0.0
+0.6828,0.6828,0.0
+0.4000,0.9657,0.0
+0.0000,0.9657,0.0
+-0.2828,0.6828,0.0
+-0.2828,0.2828,0.0
+0.0000,0.0000,0.0

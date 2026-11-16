@@ -28,6 +28,7 @@ setup(
             'benchmark = landmark_detector.benchmark:main',
             'dataset_capture = landmark_detector.dataset_capture:main',
             'range_node = landmark_detector.range_node:main',
+            'tag_node = landmark_detector.tag_node:main',
         ],
     },
 )
