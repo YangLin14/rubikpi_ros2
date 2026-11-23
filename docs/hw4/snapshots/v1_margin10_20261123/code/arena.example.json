@@ -1,0 +1,26 @@
+{
+  "kind": "example",
+  "size_m": [3.048, 3.048],
+  "grid_m": 0.05,
+  "robot_radius_m": 0.16,
+  "tracking_margin_m": 0.10,
+  "start": [0.75, 0.75, 0.785398],
+  "goal": [2.30, 2.30],
+  "obstacles": [
+    {"name": "center box", "bounds_m": [1.27, 1.27, 1.77, 1.77]}
+  ],
+  "landmarks": {
+    "water_bottle": {"position": [2.45, 3.10], "radius": 0.048},
+    "toilet_paper": {"position": [3.10, 2.25], "radius": 0.05},
+    "cereal_box": {"position": [1.05, -0.08], "radius": 0.035},
+    "dog_plushie": {"position": [-0.10, 1.10], "radius": 0.05},
+    "tag_0": {"position": [0.48, -0.08]},
+    "tag_1": {"position": [-0.08, 2.18]},
+    "tag_2": {"position": [0.48, 3.10]},
+    "tag_3": {"position": [3.10, 0.68]},
+    "box_tag_0": {"class": "tag_0", "position": [1.77, 1.52]},
+    "box_tag_1": {"class": "tag_1", "position": [1.52, 1.77]},
+    "box_tag_2": {"class": "tag_2", "position": [1.52, 1.27]},
+    "box_tag_3": {"class": "tag_3", "position": [1.27, 1.52]}
+  }
+}

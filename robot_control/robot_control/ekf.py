@@ -11,8 +11,22 @@ import numpy as np
 # stopped robot stays put and speed errors add up along the path.
 
 
+# Chi-square limit on 2 degrees of freedom: rejects a true sighting about 1 time in 1000.
+GATE = 13.8
+
+
 def wrap_angle(a):
     return math.atan2(math.sin(a), math.cos(a))
+
+
+def rank_matches(ekf, candidates):
+    """Order the map landmarks that could explain one sighting, best first.
+
+    Several landmarks can share a class (two printed tag_0, say). Each candidate is
+    (key, landmark_xy, range, bearing, sigma_range, sigma_bearing), since range and
+    noise can depend on the landmark. Returns [(nis, candidate), ...] sorted by NIS.
+    """
+    return sorted(((ekf.nis(c[1], *c[2:]), c) for c in candidates), key=lambda item: item[0])
 
 
 class PoseEkf:
@@ -38,21 +52,32 @@ class PoseEkf:
                      self.k_turn ** 2 * abs(w * dt) + self.sigma_drift ** 2 * dt])
         self.P = F @ self.P @ F.T + G @ Q @ G.T
 
-    def update(self, landmark, rng, bearing, sigma_range, sigma_bearing, gate=13.8):
-        """Fuse one sighting. Returns False if it fails the outlier gate.
-
-        gate is the chi-square limit on 2 degrees of freedom: 13.8 rejects a true
-        sighting about 1 time in 1000.
-        """
+    def innovation(self, landmark, rng, bearing, sigma_range, sigma_bearing):
+        """Return (y, H, R, S) for one sighting, or None if the robot sits on the landmark."""
         dx, dy = landmark[0] - self.state[0], landmark[1] - self.state[1]
         q = dx * dx + dy * dy
         r = math.sqrt(q)
         if r < 1e-6:
-            return False
+            return None
         H = np.array([[-dx / r, -dy / r, 0.0], [dy / q, -dx / q, -1.0]])
         y = np.array([rng - r, wrap_angle(bearing - (math.atan2(dy, dx) - self.state[2]))])
         R = np.diag([sigma_range ** 2, sigma_bearing ** 2])
-        S = H @ self.P @ H.T + R
+        return y, H, R, H @ self.P @ H.T + R
+
+    def nis(self, landmark, rng, bearing, sigma_range, sigma_bearing):
+        """Normalized innovation squared: how well this landmark explains the sighting."""
+        parts = self.innovation(landmark, rng, bearing, sigma_range, sigma_bearing)
+        if parts is None:
+            return math.inf
+        y, _, _, S = parts
+        return float(y @ np.linalg.solve(S, y))
+
+    def update(self, landmark, rng, bearing, sigma_range, sigma_bearing, gate=GATE):
+        """Fuse one sighting. Returns False if it fails the outlier gate."""
+        parts = self.innovation(landmark, rng, bearing, sigma_range, sigma_bearing)
+        if parts is None:
+            return False
+        y, H, R, S = parts
         if float(y @ np.linalg.solve(S, y)) > gate:
             return False
         K = self.P @ H.T @ np.linalg.inv(S)

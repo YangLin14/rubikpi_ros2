@@ -1,0 +1,32 @@
+{
+  "kind": "measured",
+  "safety_width_m": 0.27,
+  "routes": {
+    "distance": {
+      "length_m": 2.545556920515538,
+      "min_clearance_m": 0.04372992503051959,
+      "obstacle_clearance_m": 0.04372992503051959,
+      "grid": {
+        "length_m": 2.647056274847714,
+        "min_clearance_m": 0.03313207915827954,
+        "obstacle_clearance_m": 0.03313207915827954
+      },
+      "waypoints": 3,
+      "sha256": "c66f3203b6d443c7d911ee427bc9b3bcbbce766ddc4eb3613142213a1a821dc7"
+    },
+    "safety": {
+      "length_m": 2.7471671763837664,
+      "min_clearance_m": 0.19000000000000009,
+      "obstacle_clearance_m": 0.27,
+      "grid": {
+        "length_m": 2.8520815280171306,
+        "min_clearance_m": 0.19000000000000009,
+        "obstacle_clearance_m": 0.27
+      },
+      "waypoints": 5,
+      "sha256": "32ad98f040c9ab4a1a757b2b265dab607e9fafcc2f7472a194a0b87cf5785025"
+    }
+  },
+  "map_sha256": "6268cea2b344f222e20c198cce0072a54730c3a80aa9aabbf2a856751e41e93e",
+  "arena_sha256": "389d99f0af3da6f11fd57b689d00ab2121caab629d8647ab6c692eb071975cc2"
+}

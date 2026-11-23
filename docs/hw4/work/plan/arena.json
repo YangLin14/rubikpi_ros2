@@ -1,0 +1,113 @@
+{
+  "kind": "measured",
+  "size_m": [
+    2.0,
+    3.0
+  ],
+  "grid_m": 0.05,
+  "robot_radius_m": 0.16,
+  "tracking_margin_m": 0.1,
+  "distance_margin_m": 0.03,
+  "start": [
+    1.65,
+    0.4,
+    1.570796
+  ],
+  "goal": [
+    0.4,
+    2.5
+  ],
+  "obstacles": [
+    {
+      "name": "center box",
+      "bounds_m": [
+        0.88,
+        1.42,
+        1.13,
+        1.575
+      ]
+    }
+  ],
+  "landmarks": {
+    "dog_plushie": {
+      "position": [
+        -0.085,
+        1.0
+      ],
+      "radius": 0.05
+    },
+    "water_bottle": {
+      "position": [
+        0.5,
+        3.083
+      ],
+      "radius": 0.048
+    },
+    "toilet_paper": {
+      "position": [
+        2.085,
+        2.0
+      ],
+      "radius": 0.05
+    },
+    "cereal_box": {
+      "position": [
+        1.5,
+        -0.07
+      ],
+      "radius": 0.035
+    },
+    "tag_0": {
+      "position": [
+        0.5,
+        -0.035
+      ]
+    },
+    "tag_1": {
+      "position": [
+        -0.035,
+        2.0
+      ]
+    },
+    "tag_2": {
+      "position": [
+        1.5,
+        3.035
+      ]
+    },
+    "tag_3": {
+      "position": [
+        2.035,
+        1.0
+      ]
+    },
+    "box_tag_0": {
+      "class": "tag_0",
+      "position": [
+        1.0,
+        1.42
+      ]
+    },
+    "box_tag_1": {
+      "class": "tag_1",
+      "position": [
+        1.13,
+        1.5
+      ]
+    },
+    "box_tag_2": {
+      "class": "tag_2",
+      "position": [
+        0.88,
+        1.5
+      ]
+    },
+    "box_tag_3": {
+      "class": "tag_3",
+      "position": [
+        1.0,
+        1.575
+      ]
+    }
+  }
+}

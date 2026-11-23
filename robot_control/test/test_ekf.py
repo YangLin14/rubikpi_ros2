@@ -1,7 +1,7 @@
 import math
 import random
 
-from robot_control.ekf import PoseEkf, wrap_angle
+from robot_control.ekf import GATE, PoseEkf, rank_matches, wrap_angle
 
 LANDMARKS = {'tp': (1.3, 0.0), 'dog': (1.3, 1.0), 'bottle': (1.3, 2.0), 'box': (-0.2, -0.4)}
 FOV = math.radians(40.0)
@@ -87,3 +87,30 @@ def test_landmarks_beat_a_wrong_speed():
     with_lm = sum(sum(t[0][0]) for t in trials) / (3 * len(trials))
     without = sum(sum(t[1][0]) for t in trials) / (3 * len(trials))
     assert with_lm < without / 2
+
+
+def sighting_of(ekf_truth, landmark):
+    x, y, theta = ekf_truth
+    r = math.hypot(landmark[0] - x, landmark[1] - y)
+    return r, wrap_angle(math.atan2(landmark[1] - y, landmark[0] - x) - theta)
+
+
+def test_duplicate_tag_id_matches_the_right_instance():
+    # HW4: tag_0 at the arena edge and a second tag_0 on the center box
+    edge, box = (0.48, -0.08), (1.77, 1.52)
+    ekf = PoseEkf(0.75, 0.75, math.radians(45))
+    for seen in (edge, box):
+        r, b = sighting_of((0.75, 0.75, math.radians(45)), seen)
+        ranked = rank_matches(ekf, [(name, lm, r, b, 0.03 * r, math.radians(1.5))
+                                    for name, lm in (('edge', edge), ('box', box))])
+        assert ranked[0][1][1] == seen
+        assert ranked[0][0] <= GATE < ranked[1][0]
+
+
+def test_two_instances_that_both_fit_are_reported():
+    # Two tag_0 at the same range and bearing from a very uncertain pose: both pass the gate
+    ekf = PoseEkf(0.0, 0.0, 0.0, sigma_xy=1.0, sigma_theta=1.0)
+    a, b = (1.0, 0.1), (1.0, -0.1)
+    r, bearing = sighting_of((0.0, 0.0, 0.0), a)
+    ranked = rank_matches(ekf, [(n, lm, r, bearing, 0.03, math.radians(1.5)) for n, lm in (('a', a), ('b', b))])
+    assert ranked[1][0] <= GATE

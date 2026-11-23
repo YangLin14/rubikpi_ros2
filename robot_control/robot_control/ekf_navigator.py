@@ -9,7 +9,7 @@ from ament_index_python.packages import get_package_share_directory
 from rclpy.utilities import remove_ros_args
 from vision_msgs.msg import Detection2DArray
 
-from robot_control.ekf import PoseEkf, wrap_angle
+from robot_control.ekf import GATE, PoseEkf, rank_matches, wrap_angle
 from robot_control.waypoint_navigator import (
     DRIVE_CMD, HEADING_KP, MAX_CORRECTION, MAX_TURN_TIME, SETTLE_TIME, TURN_CMD, TURN_LEAD,
     WaypointNavigator, load_waypoints)
@@ -41,6 +41,21 @@ RANGE_OFFSET = 0.03       # m; camera ranges read this much long from 0.3 to 2 m
 SIGMA_RANGE = 0.05        # fraction of the range
 SIGMA_RANGE_MOVING = 0.08  # m, lower limit while driving: the frame is 5 to 8 cm old
 SIGMA_BEARING = math.radians(2.0)
+# AprilTags (tag_node, solvePnP): position is the tag center, so no radius or range offset
+TAG_SIGMA_RANGE = 0.03    # fraction of the range
+TAG_SIGMA_MIN = 0.02      # m
+TAG_SIGMA_BEARING = math.radians(1.5)
+# YOLO sometimes boxes an AprilTag's black square as cereal_box (HW3). An object box
+# whose center falls inside a recent tag box, grown by TAG_MASK_GROW, is dropped.
+TAG_MASK_TIME = 0.6       # s
+TAG_MASK_GROW = 0.5       # fraction of the tag box size
+# A detection matched to a landmark the camera cannot see is a false positive (HW4: YOLO
+# saw "cereal_box" in clutter while the real box was behind the robot). It is skipped and
+# does not count toward MAX_REJECTIONS. Half field of view: the lens's barrel distortion
+# makes it wider than atan(640 px / fx 648 px) = 44.6 deg; accepted sightings in the
+# HW2-HW4 logs reach 54 deg from the camera axis.
+CAMERA_HALF_FOV = math.radians(55.0)
+VISIBILITY_MARGIN = math.radians(10.0)
 TURNING_RATE = math.radians(15.0)  # rad/s; above this the robot counts as turning
 MOTION_BLANK = 0.5        # seconds after a turn or stop before sightings count again
 IMAGE_LATENCY = 0.3       # seconds; fitted to the overshoot on the first test drive
@@ -78,17 +93,20 @@ class Abort(Exception):
     pass
 
 
-def load_map():
-    path = os.path.join(get_package_share_directory('landmark_detector'), 'config', 'landmarks.yaml')
+def load_map(path=None):
+    """Landmarks with a position, by instance name. 'class' is the detector class_id
+    and defaults to the name, so several instances can share one class (two tag_0)."""
+    if path is None:
+        path = os.path.join(get_package_share_directory('landmark_detector'), 'config', 'landmarks.yaml')
     with open(path) as f:
         data = yaml.safe_load(f)['landmarks']
-    return {k: v for k, v in data.items() if 'position' in v}
+    return {k: {**v, 'class': v.get('class', k)} for k, v in data.items() if 'position' in v}
 
 
-def to_range_bearing(forward, left, radius):
+def to_range_bearing(forward, left, radius, offset=RANGE_OFFSET):
     """Convert a camera sighting of a landmark's front face to its center, seen from the robot center."""
     r = math.hypot(forward, left)
-    scale = (r - RANGE_OFFSET + radius) / r
+    scale = (r - offset + radius) / r
     c, s = math.cos(CAMERA_YAW), math.sin(CAMERA_YAW)
     x = (forward * c - left * s) * scale + CAMERA_X
     y = (forward * s + left * c) * scale
@@ -96,9 +114,16 @@ def to_range_bearing(forward, left, radius):
 
 
 class EkfNavigator(WaypointNavigator):
-    def __init__(self, stem):
+    def __init__(self, stem, landmark_map=None, strict_waypoints=False, waypoint_tolerance=None):
         super().__init__()
-        self.landmarks = load_map()
+        self.landmarks = load_map(landmark_map)
+        self.instances = {}  # class_id -> instance names
+        for name, lm in self.landmarks.items():
+            self.instances.setdefault(lm['class'], []).append(name)
+        self.strict_waypoints = strict_waypoints
+        self.waypoint_tolerance = POSITION_TOLERANCE if waypoint_tolerance is None else waypoint_tolerance
+        self.tag_boxes = []  # (time, x1, y1, x2, y2) in pixels
+        self.masked = self.ambiguous = self.out_of_view = 0
         self.ekf = PoseEkf()
         self.speed = 0.0
         self.turning = False
@@ -157,30 +182,75 @@ class EkfNavigator(WaypointNavigator):
             self.last_driving = time.time()
         super().send(L, R)
 
+    def sighting(self, name, forward, left, moving):
+        """(name, position, range, bearing, sigma_range, sigma_bearing) if `name` were the one seen."""
+        lm = self.landmarks[name]
+        if lm['class'].startswith('tag_'):
+            rng, bearing = to_range_bearing(forward, left, 0.0, 0.0)
+            sigma_range, sigma_bearing = max(TAG_SIGMA_MIN, TAG_SIGMA_RANGE * rng), TAG_SIGMA_BEARING
+        else:
+            rng, bearing = to_range_bearing(forward, left, lm['radius'])
+            sigma_range, sigma_bearing = SIGMA_RANGE * rng, SIGMA_BEARING
+        if moving:
+            sigma_range = max(sigma_range, SIGMA_RANGE_MOVING)
+        return name, lm['position'], rng, bearing, sigma_range, sigma_bearing
+
+    def on_a_tag(self, det, now):
+        """True if this object detection sits on a recently seen AprilTag."""
+        u, v = det.bbox.center.position.x, det.bbox.center.position.y
+        for t, x1, y1, x2, y2 in self.tag_boxes:
+            gx, gy = TAG_MASK_GROW * (x2 - x1), TAG_MASK_GROW * (y2 - y1)
+            if now - t < TAG_MASK_TIME and x1 - gx <= u <= x2 + gx and y1 - gy <= v <= y2 + gy:
+                return True
+        return False
+
     def on_observations(self, msg):
         now = time.time()
+        # Remember tag boxes first, even while turning. A list, since two tags can share an id.
+        self.tag_boxes = [box for box in self.tag_boxes if now - box[0] < TAG_MASK_TIME]
+        for det in msg.detections:
+            if det.results[0].hypothesis.class_id.startswith('tag_'):
+                b = det.bbox
+                self.tag_boxes.append((now, b.center.position.x - b.size_x / 2.0,
+                                       b.center.position.y - b.size_y / 2.0,
+                                       b.center.position.x + b.size_x / 2.0,
+                                       b.center.position.y + b.size_y / 2.0))
         moving = abs(self.speed) > 0.01
         if not self.localizing or now - self.last_turning < MOTION_BLANK:
             return
         if not moving and now - self.last_driving < MOTION_BLANK:
             return
         for det in msg.detections:
-            name = det.results[0].hypothesis.class_id
-            lm = self.landmarks.get(name)
-            if lm is None or now - self.last_sighting.get(name, 0.0) < SIGHTING_PERIOD:
+            cls = det.results[0].hypothesis.class_id
+            if cls not in self.instances:
+                continue
+            if not cls.startswith('tag_') and self.on_a_tag(det, now):
+                self.masked += 1
+                continue
+            p = det.results[0].pose.pose.position
+            forward = p.x - self.speed * IMAGE_LATENCY
+            # Data association: the instance of this class that best explains the sighting.
+            # If a second instance also passes the gate, the sighting is skipped, not guessed.
+            ranked = rank_matches(self.ekf, [self.sighting(n, forward, p.y, moving)
+                                             for n in self.instances[cls]])
+            if len(ranked) > 1 and ranked[1][0] <= GATE:
+                self.ambiguous += 1
+                continue
+            name, position, rng, bearing, sigma, sigma_bearing = ranked[0][1]
+            if now - self.last_sighting.get(name, 0.0) < SIGHTING_PERIOD:
                 continue
             self.last_sighting[name] = now
-            p = det.results[0].pose.pose.position
-            rng, bearing = to_range_bearing(p.x - self.speed * IMAGE_LATENCY, p.y, lm['radius'])
+            x, y, theta = self.ekf.state[:3]
+            dx, dy = position[0] - x, position[1] - y
+            expected = (math.hypot(dx, dy), wrap_angle(math.atan2(dy, dx) - theta))
+            if abs(wrap_angle(expected[1] - CAMERA_YAW)) > CAMERA_HALF_FOV + VISIBILITY_MARGIN:
+                self.out_of_view += 1
+                self.obs_log.write(f'{now - self.started:.2f},{name},{rng:.3f},{bearing:.4f},'
+                                   f'{expected[0]:.3f},{expected[1]:.4f},-1\n')
+                continue
             if moving and name == self.stop_landmark and rng <= self.stop_range:
                 self.arrived = True
-            sigma = SIGMA_RANGE * rng
-            if moving:
-                sigma = max(sigma, SIGMA_RANGE_MOVING)
-            x, y, theta = self.ekf.state[:3]
-            dx, dy = lm['position'][0] - x, lm['position'][1] - y
-            expected = (math.hypot(dx, dy), wrap_angle(math.atan2(dy, dx) - theta))
-            ok = self.ekf.update(lm['position'], rng, bearing, sigma, SIGMA_BEARING)
+            ok = self.ekf.update(position, rng, bearing, sigma, sigma_bearing)
             self.used += ok
             self.rejected += not ok
             self.check_lost(name, ok)
@@ -209,6 +279,8 @@ class EkfNavigator(WaypointNavigator):
             raise Abort(f'turn failed, {math.degrees(err):+.1f} deg off target')
 
     def log_pose(self):
+        if not self.localizing:
+            return  # before start_at the pose is a placeholder (0, 0, 0), not an estimate
         x, y, theta = self.ekf.state[:3]
         P = self.ekf.P
         elapsed = time.time() - self.started
@@ -229,6 +301,8 @@ class EkfNavigator(WaypointNavigator):
         """Find a landmark straight past the goal. Its seen range stops the robot, whatever the EKF says."""
         self.stop_landmark = None
         self.arrived = False
+        if self.strict_waypoints:
+            return
         for name, lm in self.landmarks.items():
             dx, dy = lm['position'][0] - gx, lm['position'][1] - gy
             d = math.hypot(dx, dy)
@@ -267,6 +341,7 @@ class EkfNavigator(WaypointNavigator):
               f'sigma ({math.sqrt(P[0, 0]):.3f}, {math.sqrt(P[1, 1]):.3f} m, '
               f'{math.degrees(math.sqrt(P[2, 2])):.1f} deg), '
               f'sightings used {self.used}, rejected {self.rejected}, '
+              f'ambiguous {self.ambiguous}, on a tag {self.masked}, out of view {self.out_of_view}, '
               f'gyro frozen {self.frozen_time:.1f} s')
 
     def look_only(self, waypoints):
@@ -290,14 +365,20 @@ class EkfNavigator(WaypointNavigator):
                 direction = math.atan2(gy - y, gx - x)
                 off = abs(wrap_angle(direction - theta))
                 if attempt > 0 and off > RETRY_WITHIN:
-                    break  # the goal is off to the side; reaching it would take another spin
-                if attempt == 0 and off > TURN_FIRST_ABOVE:
+                    # The goal is off to the side; reaching it takes another spin. Only
+                    # worth it when a strict run would otherwise abort here.
+                    if not (self.strict_waypoints and self.distance_to(gx, gy) > self.waypoint_tolerance):
+                        break
+                    self.turn_once(direction)
+                elif attempt == 0 and off > TURN_FIRST_ABOVE:
                     self.turn_once(direction)
                 self.drive_to(gx, gy)
                 self.look()
             if abs(wrap_angle(gtheta - self.ekf.state[2])) > TURN_FIRST_ABOVE:
                 self.turn_once(gtheta)
             self.report(f'waypoint {i}')
+            if self.strict_waypoints and self.distance_to(gx, gy) > self.waypoint_tolerance:
+                raise Abort(f'waypoint {i} was missed by {self.distance_to(gx, gy):.3f} m')
         print('Done.')
 
 
@@ -306,23 +387,34 @@ def main(args=None):
     parser = argparse.ArgumentParser(description='Closed-loop waypoint driving with landmarks.')
     parser.add_argument('waypoints', help='file with one "x,y,theta" per line')
     parser.add_argument('--look-only', action='store_true', help='estimate the pose without driving')
+    parser.add_argument('--landmark-map', help='per-arena YAML or JSON landmark positions')
+    parser.add_argument('--log-prefix', help='output path prefix for pose and observation CSVs')
+    parser.add_argument('--strict-waypoints', action='store_true',
+                        help='disable landmark-based stopping and fail on missed waypoints')
+    parser.add_argument('--waypoint-tolerance', type=float,
+                        help=f'm; a strict run aborts beyond this miss (default {POSITION_TOLERANCE})')
     opts = parser.parse_args(remove_ros_args(args=None)[1:])
     waypoints = load_waypoints(opts.waypoints)
 
-    folder = os.path.expanduser('~/hw2_runs')
-    os.makedirs(folder, exist_ok=True)
-    stem = os.path.join(folder, time.strftime('%m%d_%H%M%S'))
-    node = EkfNavigator(stem)
+    stem = opts.log_prefix
+    if stem is None:
+        folder = os.path.expanduser('~/hw2_runs')
+        os.makedirs(folder, exist_ok=True)
+        stem = os.path.join(folder, time.strftime('%m%d_%H%M%S'))
+    node = EkfNavigator(stem, opts.landmark_map, opts.strict_waypoints, opts.waypoint_tolerance)
+    status = 0
     try:
         if opts.look_only:
             node.look_only(waypoints)
         else:
             node.run(waypoints)
     except KeyboardInterrupt:
-        pass
+        status = 130 if opts.strict_waypoints else 0
     except Abort as e:
         print(f'ABORT: {e}')
+        status = 1 if opts.strict_waypoints else 0
     finally:
+        node.limits_on = False  # else the run-time / sigma check aborts again while stopping
         node.drive_for(0.2)  # make sure the robot stops
         node.pose_log.close()
         node.obs_log.close()
@@ -330,8 +422,8 @@ def main(args=None):
         if rclpy.ok():
             rclpy.shutdown()
     print(f'Logs: {stem}_pose.csv, {stem}_obs.csv')
-    return 0
+    return status
 
 
 if __name__ == '__main__':
-    main()
+    raise SystemExit(main())
